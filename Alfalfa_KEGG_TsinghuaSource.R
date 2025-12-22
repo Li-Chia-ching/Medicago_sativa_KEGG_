@@ -1,7 +1,7 @@
 # ==============================================================================
-# GO/KEGG富集分析V3.0 - 完整R脚本（修正字符串连接错误版）
+# GO/KEGG富集分析V3.1 - 完整R脚本（修正字符串连接错误版）
 # 作者：基于专家评审意见改进
-# 日期：2025-12
+# 日期：2024
 # 功能：基于本地注释数据的GO/KEGG富集分析
 # ==============================================================================
 
@@ -362,7 +362,8 @@ extract_go_from_data <- function(df) {
       go_ids <- character()
       for (term in terms) {
         # 查找GO:后跟7位数字的模式（根据专家建议）
-        matches <- regmatches(term, regexpr("GO:\\d{7}", term, perl = TRUE))
+        # 修改正则表达式改为匹配“GO:”后跟任意长度数字的更通用模式
+        matches <- regmatches(term, regexpr("GO:\\d+", term, perl = TRUE))
         if (length(matches) > 0) {
           go_ids <- c(go_ids, matches)
         }
@@ -521,8 +522,8 @@ extract_kegg_from_data <- function(df) {
       pathway_ids <- character()
       for (pathway in pathways) {
         # 支持多种KEGG格式（根据专家建议改进正则表达式）
-        # 支持: mtr00195, map00195, ko00195, K00195, PATH:mtr00195等
-        pattern <- "((mtr|map|ko|MTR|MAP|KO|K)\\d{4,5})|(PATH:(mtr|map|ko)\\d{4,5})"
+        # KEGG ID提取规则改为更灵活的模式，并确保正确捕获
+        pattern <- "\\b(([a-zA-Z]{2,6})0\\d{4,5})\\b"
         matches <- regmatches(pathway, regexpr(pattern, pathway, ignore.case = TRUE, perl = TRUE))
         
         if (length(matches) > 0) {
@@ -564,6 +565,21 @@ extract_kegg_from_data <- function(df) {
   )
   
   cat(paste("  总KEGG通路数:", nrow(kegg_df), "\n"))
+  
+  # 注意：这需要网络连接，如果希望纯本地，可告知用户手动准备映射表
+  cat("  正在获取KEGG通路名称...\n")
+  tryCatch({
+    unique_pathways <- unique(kegg_df$Pathway_ID)
+    # 使用clusterProfiler的辅助函数获取名称
+    pathway_names <- clusterProfiler::pathway2name(unique_pathways, organism = "mtr")
+    if (!is.null(pathway_names) && nrow(pathway_names) > 0) {
+      kegg_df <- merge(kegg_df, pathway_names, by.x = "Pathway_ID", by.y = "pathway", all.x = TRUE)
+      # 重命名列
+      colnames(kegg_df)[colnames(kegg_df) == "name"] <- "Pathway_Name"
+    }
+  }, error = function(e) {
+    cat(paste("  警告: 无法获取KEGG通路名称 -", e$message, "\n"))
+  })
   
   return(kegg_df)
 }
